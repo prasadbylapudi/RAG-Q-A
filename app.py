@@ -20,6 +20,16 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import CrossEncoder
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
+# from ragas.metrics import (
+#     answer_relevancy,
+#     answer_correctness,
+#     faithfulness,
+#     context_recall,
+#     context_precision,
+# )
+# from datasets import Dataset
+
+
 system_prompt = """
 You are an AI assistant tasked with providing detailed answers based solely on the given context. Your goal is to analyze the information provided and formulate a comprehensive, well-structured response to the question.
 
@@ -53,8 +63,7 @@ def get_redis_store() -> RedisVectorStore:
     embeddings = OllamaEmbeddings(
         model="nomic-embed-text:latest",
     )
-    # st.header("Embeddings")
-    # st.write(embeddings)
+    
     return RedisVectorStore(
         embeddings,
         config=RedisConfig(
@@ -73,19 +82,20 @@ def create_cached_contents(uploaded_file: UploadedFile) -> list[Document]:
     Takes an uploaded CSV file containing question-answer pairs, converts them to Document
     objects and adds them to a Redis vector store for caching.
 
-    takes arguments  uploaded_file: A Streamlit UploadedFile object containing the CSV data with
-            'question' and 'answer' columns.
-
     """
+    # breakpoint()
+    # st.write(uploaded_file.getvalue())
     data = uploaded_file.getvalue().decode("utf-8")
+    # passing it to stringIo cuz when we need a file like object when we passing data to dictionary reader.
     csv_reader = csv.DictReader(StringIO(data))
-
+    
     docs = []
     for row in csv_reader:
         docs.append(
             Document(page_content=row["question"], metadata={"answer": row["answer"]})
         )
     vector_store = get_redis_store()
+    # st.write(vector_store)
     vector_store.add_documents(docs)
     st.success("Cache contents added!")
 
@@ -93,38 +103,36 @@ def create_cached_contents(uploaded_file: UploadedFile) -> list[Document]:
 def query_semantic_cache(query: str, n_results: int = 1, threshold: float = 80.0):
     """Queries the semantic cache for similar questions and returns cached results if found.
 
-    Args:
-        query: The search query text to find relevant cached results.
-        n_results: Maximum number of results to return. Defaults to 1.
-        threshold: Minimum similarity score threshold (0-100) for returning cached results.
+    threshold: Minimum similarity score threshold (0-100) for returning cached results.
             Defaults to 80.0.
     """
     vector_store = get_redis_store()
     results = vector_store.similarity_search_with_score(query, k=n_results)
-
+    # breakpoint()
     if not results:
         return None
-
+    #redis gives distance, we are calculating similarity.
     match_percentage = (1 - abs(results[0][1])) * 100
+    # st.write(match_percentage)
     if match_percentage >= threshold:
         return results
     return None
 
 
     # Store uploaded file as a temp file
-    temp_file = tempfile.NamedTemporaryFile("wb", suffix=".pdf", delete=False)
-    temp_file.write(uploaded_file.read())
+    # temp_file = tempfile.NamedTemporaryFile("wb", suffix=".pdf", delete=False)
+    # temp_file.write(uploaded_file.read())
 
-    loader = PyMuPDFLoader(temp_file.name)
-    docs = loader.load()
-    os.unlink(temp_file.name)  # Delete temp file
+    # loader = PyMuPDFLoader(temp_file.name)
+    # docs = loader.load()
+    # os.unlink(temp_file.name)  # Delete temp file
 
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=400,
-        chunk_overlap=100,
-        separators=["\n\n", "\n", ".", "?", "!", " ", ""],
-    )
-    return text_splitter.split_documents(docs)
+    # text_splitter = RecursiveCharacterTextSplitter(
+    #     chunk_size=400,
+    #     chunk_overlap=100,
+    #     separators=["\n\n", "\n", ".", "?", "!", " ", ""],
+    # )
+    # return text_splitter.split_documents(docs)
 
 def process_document(uploaded_file: UploadedFile) -> list[Document]:
     # Store uploaded file as a temp file
@@ -143,6 +151,7 @@ def process_document(uploaded_file: UploadedFile) -> list[Document]:
         chunk_overlap=100,
         separators=["\n\n", "\n", ".", "?", "!", " ", ""],
     )
+    # st.write(text)
     return text_splitter.split_documents(docs)
 
 
@@ -151,7 +160,7 @@ def get_vector_collection() -> chromadb.Collection:
 
     Creates an Ollama embedding function using the nomic-embed-text model and initializes
     a persistent ChromaDB client. Returns a collection that can be used to store and
-    query document embeddings.
+    query document embeddings.  
 
     Returns:
         chromadb.Collection: A ChromaDB collection configured with the Ollama embedding
@@ -169,8 +178,8 @@ def get_vector_collection() -> chromadb.Collection:
                       = 0.70
             ||A|| = sqrt(0.1² + 0.8² + 0.3²) = sqrt(0.01 + 0.64 + 0.09) = sqrt(0.74) ≈ 0.86
             ||B|| = sqrt(0.2² + 0.7² + 0.4²) = sqrt(0.04 + 0.49 + 0.16) = sqrt(0.69) ≈ 0.83
-
-
+            why?
+            Normalization: Converts raw dot products into a comparable scale (-1 to 1).
             Meaning	            Cosine Distance	     Cosine Similarity
             Very similar	     0.0 – 0.3	        0.7 – 1.0
             Somewhat similar	~0.4 – 0.6	        ~0.6 – 0.4
@@ -248,14 +257,7 @@ def call_llm(context: str, prompt: str):
 
 
 # def re_rank_cross_encoders(documents: list[str]) -> tuple[str, list[int]]:
-#     """Re-ranks documents using a cross-encoder model for more accurate relevance scoring.
-
-#     Uses the MS MARCO MiniLM cross-encoder model to re-rank the input documents based on
-#     their relevance to the query prompt. Returns the concatenated text of the top 3 most
-#     relevant documents along with their indices.
-
-#     """
-#     relevant_text = ""
+#        relevant_text = ""
 #     relevant_text_ids = []
 
 #     encoder_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
@@ -280,7 +282,7 @@ def re_rank_cross_encoders(prompt: str, documents: list[str]) -> tuple[str, list
     # Prepare pairs of (prompt, document) for scoring
     pairs = [[prompt, doc] for doc in documents]
     scores = encoder_model.predict(pairs)
-
+    st.write(scores)
     # Get indices of top 3 documents
     top_indices = np.argsort(scores)[::-1][:3]
     
@@ -307,30 +309,73 @@ if __name__ == "__main__":
             help="Choose Primary for uploading document for QnA.\n\nChoose Cache for uploading cached results",
         )
 
-        if (
-            uploaded_file
-            and upload_option == "Primary"
-            and uploaded_file.name.split(".")[-1] == "csv"
-        ):
-            st.error("CSV is only allowed for 'Cache' option.")
-            sys.exit(1)
+        if uploaded_file:
+            file_ext = uploaded_file.name.split(".")[-1].lower()
+
+            if upload_option == "Primary" and file_ext == "csv":
+                st.error("CSV is only allowed for 'Cache' option.")
+                sys.exit(1)
+
+            if upload_option == "Cache" and file_ext != "csv":
+                st.error("Only CSV files are allowed for 'Cache' option.")
+                sys.exit(1)
+
 
         process = st.button(
             " Process",
         )
+
         if uploaded_file and process:
-            normalize_uploaded_file_name = uploaded_file.name.translate(
-                str.maketrans({"-": "_", ".": "_", " ": "_"})
-            )
+            file_ext = uploaded_file.name.split(".")[-1].lower()
 
-            if upload_option == "Cache":
-                all_splits = create_cached_contents(uploaded_file)
+            if upload_option == "Primary" and file_ext == "csv":
+                st.error("CSV is only allowed for 'Cache' option.")
+            elif upload_option == "Cache" and file_ext != "csv":
+                st.error("Only CSV files are allowed for 'Cache' option.")
             else:
-                all_splits = process_document(uploaded_file)
-                # st.write(all_splits)
-                add_to_vector_collection(all_splits, normalize_uploaded_file_name)
+                normalize_uploaded_file_name = uploaded_file.name.translate(
+                    str.maketrans({"-": "_", ".": "_", " ": "_"})
+                )
 
-    # Question and Answer Area
+                if upload_option == "Cache":
+                    all_splits = create_cached_contents(uploaded_file)
+                else:
+                    all_splits = process_document(uploaded_file)
+                    add_to_vector_collection(all_splits, normalize_uploaded_file_name)
+
+    # st.divider()
+    # st.header("🏆 RAG Evaluation")
+    
+    # eval_file = st.file_uploader(
+    #     "Upload evaluation data (CSV with 'question' and 'answer')",
+    #     type=["csv"],
+    #     key="eval_data"
+    # )
+    
+    # if eval_file and st.button("Run Evaluation"):
+    #     test_data = []
+    #     data = eval_file.read().decode("utf-8")
+    #     csv_reader = csv.DictReader(StringIO(data))
+    #     for row in csv_reader:
+    #         test_data.append({"question": row["question"], "answer": row["answer"]})
+        
+    #     with st.spinner("Evaluating RAG performance..."):
+    #         results = evaluate_ragas(test_data)
+            
+    #         st.subheader("Evaluation Results")
+    #         col1, col2, col3 = st.columns(3)
+    #         with col1:
+    #             st.metric("Faithfulness", f"{results['faithfulness']:.2f}")
+    #         with col2:
+    #             st.metric("Answer Relevance", f"{results['answer_relevance']:.2f}")
+    #         with col3:
+    #             st.metric("Context Relevance", f"{results['context_relevance']:.2f}")
+
+    #         with st.expander("Detailed Results"):
+    #             st.dataframe(results)
+
+
+    # Question and Answer Area 
     st.header("RAG Question Answer")
     prompt = st.text_area("**Ask a question related to your document:**")
     ask = st.button(
@@ -339,7 +384,7 @@ if __name__ == "__main__":
 
     if ask and prompt:
         cached_results = query_semantic_cache(query=prompt)
-
+        # st.write(cached_results)
         if cached_results:  
             st.write(cached_results[0][0].metadata["answer"].replace("\\n", "\n"))
         else:

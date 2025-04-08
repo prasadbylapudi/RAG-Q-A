@@ -3,6 +3,7 @@
 
 ## Architecture of RAG Question Answering 
  ![Architecture](architecture/architecture.png)
+ ![Architecture](architecture/cached_architecture.png)
 
 ## Prerequisites
     - ollama
@@ -37,4 +38,11 @@ docker run -d -p 6379:6379 redis/redis-stack:latest
 streamlit run app.py
 ```
 
+## Testing 
+### install requirements 
+```sh
+pip install pytest
 
+pytest test_rag.py -v
+
+```

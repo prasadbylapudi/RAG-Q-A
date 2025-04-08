@@ -1,0 +1,14 @@
+main functions
+ 
+1. `process_document`: 
+For `process_document`, I should test with a sample PDF file. I can create a mock PDF and check if the output is a list of Document objects.
+ Also, check if it handles different PDF structures and edge cases like empty files.
+
+
+4. `add_to_vector_collection`: 
+For `add_to_vector_collection`, I need to mock ChromaDB's upsert method. Verify that documents, metadatas, and IDs are correctly passed. Test if it handles different input sizes and metadata formats.
+5. `query_collection`:
+
+6. `re_rank_cross_encoders`
+
+7. `call_llm`: 
